@@ -5,7 +5,7 @@ consistent border-radius, shadows, and Segoe UI typography.
 """
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPainter, QColor, QPen, QBrush
+from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit,
     QPushButton, QCheckBox, QGraphicsDropShadowEffect
@@ -153,7 +153,8 @@ class CategoryDialog(_BaseDialog):
                     background-color: rgba(45, 45, 48, 255);
                     border: 1px solid rgba(100, 100, 110, 255);
                     border-radius: 8px;
-                    font-size: 18px;
+                    font-family: 'Segoe UI Emoji';
+                    font-size: 20px;
                 }
                 QPushButton:hover {
                     background-color: rgba(75, 75, 82, 255);
@@ -174,6 +175,8 @@ class CategoryDialog(_BaseDialog):
         self.emoji_input.setPlaceholderText("Or type a custom emoji...")
         self.emoji_input.setMinimumHeight(38)
         self.emoji_input.textChanged.connect(self._on_custom_emoji)
+        emoji_font = QFont("Segoe UI Emoji", 13)
+        self.emoji_input.setFont(emoji_font)
         layout.addWidget(self.emoji_input)
 
         # Buttons
