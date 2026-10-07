@@ -1,0 +1,28 @@
+{
+  "categories": [
+    {
+      "name": "Browsers",
+      "icon": "🌐",
+      "items": [
+        {"name": "Google Chrome", "command": "chrome.exe"},
+        {"name": "Microsoft Edge", "command": "msedge.exe"}
+      ]
+    },
+    {
+      "name": "Social",
+      "icon": "💬",
+      "items": [
+        {"name": "Telegram", "command": "telegram.exe"},
+        {"name": "WhatsApp", "command": "whatsapp:"}
+      ]
+    },
+    {
+      "name": "Tools",
+      "icon": "⚙️",
+      "items": [
+        {"name": "Notepad", "command": "notepad.exe"},
+        {"name": "Calculator", "command": "calc.exe"}
+      ]
+    }
+  ]
+}
