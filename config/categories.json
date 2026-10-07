@@ -5,16 +5,16 @@
       "icon": "🌐",
       "items": [
         {
+          "name": "Brave",
+          "command": "C:/Users/Mosab Almoghazy/Desktop/Brave.lnk"
+        },
+        {
           "name": "Google Chrome",
-          "command": "chrome.exe"
+          "command": "C:/Users/Public/Desktop/Google Chrome.lnk"
         },
         {
           "name": "Microsoft Edge",
-          "command": "msedge.exe"
-        },
-        {
-          "name": "Brave",
-          "command": "C:/Users/Mosab Almoghazy/Desktop/Brave.lnk"
+          "command": "C:/Users/Mosab Almoghazy/Desktop/Microsoft Edge.lnk"
         }
       ]
     },
@@ -22,14 +22,6 @@
       "name": "Social",
       "icon": "💬",
       "items": [
-        {
-          "name": "Telegram",
-          "command": "telegram.exe"
-        },
-        {
-          "name": "WhatsApp",
-          "command": "whatsapp:"
-        },
         {
           "name": "Discord",
           "command": "C:/Users/Mosab Almoghazy/Desktop/Discord.lnk"
@@ -40,14 +32,6 @@
       "name": "Tools",
       "icon": "⚙️",
       "items": [
-        {
-          "name": "Notepad",
-          "command": "notepad.exe"
-        },
-        {
-          "name": "Calculator",
-          "command": "calc.exe"
-        },
         {
           "name": "Handy",
           "command": "C:/Users/Mosab Almoghazy/Desktop/Handy.lnk"

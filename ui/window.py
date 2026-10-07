@@ -2,7 +2,7 @@ import sys
 import os
 import json
 from PySide6.QtCore import Qt, QPoint, QSize
-from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QMouseEvent
+from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QFontMetrics, QMouseEvent
 from PySide6.QtWidgets import (
     QWidget, QApplication, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QMenu
 )
@@ -100,20 +100,20 @@ class DrawerItemButton(QPushButton):
         # استخراج الأيقونة الأصلية للنظام (.exe / .lnk / ملف)
         icon = extract_native_icon(self.command)
 
-        self.setFixedHeight(40)
+        self.setFixedHeight(42)
         self.setCursor(Qt.PointingHandCursor)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
 
         # صف أفقي: أيقونة + نص (محاذاة مرتبة)
         row = QHBoxLayout(self)
-        row.setContentsMargins(12, 4, 12, 4)
-        row.setSpacing(10)
+        row.setContentsMargins(14, 5, 14, 5)
+        row.setSpacing(12)
 
         icon_label = QLabel(self)
-        icon_label.setFixedSize(24, 24)
+        icon_label.setFixedSize(28, 28)
         icon_label.setAlignment(Qt.AlignCenter)
         if not icon.isNull():
-            icon_label.setPixmap(icon.pixmap(QSize(24, 24)))
+            icon_label.setPixmap(icon.pixmap(QSize(28, 28)))
         row.addWidget(icon_label)
 
         text_label = QLabel(item_data.get('name', 'App'), self)
@@ -157,6 +157,18 @@ class Drawer(QWidget):
         self.setLayout(self.layout)
         self.hide()
 
+    def _fit_width(self, category_data):
+        """Compute a comfortable width that fits the longest item name."""
+        names = [item.get('name', '') for item in category_data.get('items', [])]
+        names.append(category_data.get('name', ''))
+        font = QFont()
+        font.setPixelSize(13)
+        metrics = QFontMetrics(font)
+        longest = max((metrics.horizontalAdvance(name) for name in names), default=0)
+        # icon + spacing + text + drawer margins + button padding + borders + breathing room
+        width = 28 + 12 + longest + (12 * 2) + (14 * 2) + (2 * 2) + 28
+        return max(220, min(width, 420))
+
     def show_category(self, bubble_widget, category_data):
         cat_name = category_data.get('name', '')
         
@@ -170,6 +182,8 @@ class Drawer(QWidget):
         self.current_cat_name = cat_name
         self.current_bubble = bubble_widget
         self.current_category_data = category_data
+        # ضبط العرض ديناميكياً لاستيعاب أطول اسم دون اقتطاع
+        self.setMinimumWidth(self._fit_width(category_data))
         self.render_items(category_data)
         self.adjustSize()
 
@@ -225,6 +239,7 @@ class Drawer(QWidget):
 
     def refresh_if_open(self, category_data):
         if self.isVisible() and self.current_cat_name == category_data.get('name'):
+            self.setMinimumWidth(self._fit_width(category_data))
             self.render_items(category_data)
             self.adjustSize()
 
