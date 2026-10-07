@@ -1,12 +1,13 @@
 import sys
 import os
 import json
-from PySide6.QtCore import Qt, QPoint
+from PySide6.QtCore import Qt, QPoint, QSize
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QMouseEvent
 from PySide6.QtWidgets import (
     QWidget, QApplication, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QMenu
 )
 from core.launcher import launch_target
+from core.icon_extractor import extract_native_icon
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config', 'categories.json')
 SETTINGS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config', 'settings.json')
@@ -88,6 +89,58 @@ class CategoryBubble(QPushButton):
         else:
             event.ignore()
 
+class DrawerItemButton(QPushButton):
+    """A single row inside the drawer: native system icon + application name."""
+
+    def __init__(self, item_data, parent=None):
+        super().__init__(parent)
+        self.item_data = item_data
+        self.command = item_data.get('command', '')
+
+        # استخراج الأيقونة الأصلية للنظام (.exe / .lnk / ملف)
+        icon = extract_native_icon(self.command)
+
+        self.setFixedHeight(40)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+
+        # صف أفقي: أيقونة + نص (محاذاة مرتبة)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(12, 4, 12, 4)
+        row.setSpacing(10)
+
+        icon_label = QLabel(self)
+        icon_label.setFixedSize(24, 24)
+        icon_label.setAlignment(Qt.AlignCenter)
+        if not icon.isNull():
+            icon_label.setPixmap(icon.pixmap(QSize(24, 24)))
+        row.addWidget(icon_label)
+
+        text_label = QLabel(item_data.get('name', 'App'), self)
+        text_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        row.addWidget(text_label, 1)
+
+        self.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(35, 35, 38, 230);
+                border: 1px solid rgba(70, 70, 75, 180);
+                border-radius: 8px;
+                padding: 4px 6px;
+            }
+            QPushButton:hover {
+                background-color: rgba(55, 55, 60, 255);
+                border-color: rgba(100, 100, 110, 255);
+            }
+            QLabel {
+                background: transparent;
+                color: #f0f0f0;
+                font-size: 13px;
+            }
+            QPushButton:hover QLabel {
+                color: #ffffff;
+            }
+        """)
+
 class Drawer(QWidget):
     def __init__(self, on_remove_callback, parent=None):
         super().__init__(parent)
@@ -138,29 +191,10 @@ class Drawer(QWidget):
 
         items = category_data.get('items', [])
         for item in items:
-            btn = QPushButton(item.get('name', 'App'))
-            btn.setFixedHeight(38)
-            btn.setCursor(Qt.PointingHandCursor)
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: rgba(35, 35, 38, 230);
-                    color: #f0f0f0;
-                    border: 1px solid rgba(70, 70, 75, 180);
-                    border-radius: 8px;
-                    padding: 6px 14px;
-                    font-size: 13px;
-                    text-align: left;
-                }
-                QPushButton:hover {
-                    background-color: rgba(55, 55, 60, 255);
-                    border-color: rgba(100, 100, 110, 255);
-                    color: #ffffff;
-                }
-            """)
-            cmd = item.get('command', '')
-            btn.clicked.connect(lambda checked=False, target=cmd: self.launch_and_close(target))
+            # زر مزوّد بالأيقونة الأصلية للنظام + اسم التطبيق
+            btn = DrawerItemButton(item)
+            btn.clicked.connect(lambda checked=False, target=btn.command: self.launch_and_close(target))
             # قائمة يمين (Context Menu) لحذف العنصر
-            btn.setContextMenuPolicy(Qt.CustomContextMenu)
             btn.customContextMenuRequested.connect(lambda pos, item_data=item: self.show_item_menu(pos, item_data))
             self.layout.addWidget(btn)
 
