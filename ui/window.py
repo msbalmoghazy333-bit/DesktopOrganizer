@@ -357,6 +357,12 @@ class Window(QWidget):
         self.show_animation.setDuration(300)
         self.show_animation.setEasingCurve(QEasingCurve.InOutQuad)
 
+        # Snap-to-edge animation
+        self.snap_animation = QPropertyAnimation(self, b"pos", self)
+        self.snap_animation.setDuration(400)
+        self.snap_animation.setEasingCurve(QEasingCurve.OutCubic)
+        self.snap_animation.finished.connect(self._on_snap_finished)
+
         self.initUI()
 
     def initUI(self):
@@ -613,35 +619,48 @@ class Window(QWidget):
     # ---------- Edge Snapping & Auto-Hide ----------
 
     def snap_to_edge(self):
-        """Snap the dock to the nearest screen edge if within threshold."""
+        """Find the nearest screen edge and smoothly glide to it."""
         screen = self.screen()
         if screen is None:
             return
         geo = screen.availableGeometry()
-        threshold = 35
 
         x, y = self.x(), self.y()
         w, h = self.width(), self.height()
 
-        # Check left edge
-        if abs(x - geo.left()) <= threshold:
-            self.move(geo.left(), max(geo.top(), min(y, geo.bottom() - h + 1)))
-            self.snapped_edge = "left"
-            return
+        # Calculate distance to each edge
+        dist_left = abs(x - geo.left())
+        dist_right = abs((x + w) - (geo.right() + 1))
+        dist_top = abs(y - geo.top())
 
-        # Check right edge
-        if abs((x + w) - (geo.right() + 1)) <= threshold:
-            self.move(geo.right() - w + 1, max(geo.top(), min(y, geo.bottom() - h + 1)))
-            self.snapped_edge = "right"
-            return
+        # Find the closest edge
+        distances = {
+            "left": dist_left,
+            "right": dist_right,
+            "top": dist_top,
+        }
+        closest_edge = min(distances, key=distances.get)
 
-        # Check top edge
-        if abs(y - geo.top()) <= threshold:
-            self.move(max(geo.left(), min(x, geo.right() - w + 1)), geo.top())
-            self.snapped_edge = "top"
-            return
+        # Calculate target position for the closest edge
+        if closest_edge == "left":
+            target = QPoint(geo.left(), max(geo.top(), min(y, geo.bottom() - h + 1)))
+        elif closest_edge == "right":
+            target = QPoint(geo.right() - w + 1, max(geo.top(), min(y, geo.bottom() - h + 1)))
+        else:  # top
+            target = QPoint(max(geo.left(), min(x, geo.right() - w + 1)), geo.top())
 
-        self.snapped_edge = None
+        self.snapped_edge = closest_edge
+
+        # Animate to the target position
+        self.snap_animation.stop()
+        self.snap_animation.setStartValue(self.pos())
+        self.snap_animation.setEndValue(target)
+        self.snap_animation.start()
+
+    def _on_snap_finished(self):
+        """Called when snap animation completes."""
+        self.save_position()
+        self.start_hide_timer()
 
     def start_hide_timer(self):
         """Start the auto-hide timer if docked to an edge."""
@@ -655,6 +674,8 @@ class Window(QWidget):
             self.hide_animation.stop()
         if self.show_animation.state() == QPropertyAnimation.Running:
             self.show_animation.stop()
+        if self.snap_animation.state() == QPropertyAnimation.Running:
+            self.snap_animation.stop()
 
     def hide_dock(self):
         """Animate the dock sliding off-screen, leaving a small handle visible."""
