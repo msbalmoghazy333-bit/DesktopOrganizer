@@ -1,7 +1,7 @@
 import sys
 import os
 import json
-from PySide6.QtCore import Qt, QPoint, QSize, QMimeData
+from PySide6.QtCore import Qt, QPoint, QSize, QMimeData, QTimer, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QFontMetrics, QMouseEvent, QDrag
 from PySide6.QtWidgets import (
     QWidget, QApplication, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QMenu, QDialog
@@ -340,6 +340,23 @@ class Window(QWidget):
         self.drag_position = None
         self.categories = []
         self.bubbles = []
+        self.snapped_edge = None
+        self._dock_visible = True
+
+        # Auto-hide timer
+        self.hide_timer = QTimer(self)
+        self.hide_timer.setSingleShot(True)
+        self.hide_timer.timeout.connect(self.hide_dock)
+
+        # Slide animations
+        self.hide_animation = QPropertyAnimation(self, b"pos", self)
+        self.hide_animation.setDuration(350)
+        self.hide_animation.setEasingCurve(QEasingCurve.OutCubic)
+
+        self.show_animation = QPropertyAnimation(self, b"pos", self)
+        self.show_animation.setDuration(300)
+        self.show_animation.setEasingCurve(QEasingCurve.InOutQuad)
+
         self.initUI()
 
     def initUI(self):
@@ -360,6 +377,7 @@ class Window(QWidget):
         self.customContextMenuRequested.connect(self.show_dock_context_menu)
         # استعادة آخر موقع محفوظ (أو الافتراضي 120,120)
         pos_x, pos_y = self.load_position()
+        self.snapped_edge = self.load_snapped_edge()
         self.setGeometry(pos_x, pos_y, self.sizeHint().width(), self.sizeHint().height())
         self.show()
 
@@ -398,20 +416,31 @@ class Window(QWidget):
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:
+            self.cancel_hide()
             self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             event.accept()
 
     def mouseMoveEvent(self, event: QMouseEvent):
         if event.buttons() == Qt.LeftButton and self.drag_position:
-            self.move(event.globalPosition().toPoint() - self.drag_position)
+            new_pos = event.globalPosition().toPoint() - self.drag_position
+
+            # Clamp to keep at least 30px visible
+            screen = self.screen()
+            if screen:
+                geo = screen.availableGeometry()
+                new_pos.setX(max(geo.left() - self.width() + 30, min(new_pos.x(), geo.right() - 30)))
+                new_pos.setY(max(geo.top() - self.height() + 30, min(new_pos.y(), geo.bottom() - 30)))
+
+            self.move(new_pos)
             if self.drawer.isVisible():
                 self.drawer.hide()
             event.accept()
 
     def mouseReleaseEvent(self, event: QMouseEvent):
-        # عند الانتهاء من سحب النافذة -> حفظ الموقع الجديد
+        # عند الانتهاء من سحب النافذة -> الالتصاق بالحافة ثم حفظ الموقع
         if event.button() == Qt.LeftButton and self.drag_position is not None:
             self.drag_position = None
+            self.snap_to_edge()
             self.save_position()
             event.accept()
 
@@ -426,9 +455,22 @@ class Window(QWidget):
     def save_position(self):
         try:
             with open(SETTINGS_PATH, 'w', encoding='utf-8') as f:
-                json.dump({"x": self.x(), "y": self.y()}, f, indent=2)
+                json.dump({
+                    "x": self.x(),
+                    "y": self.y(),
+                    "snapped_edge": self.snapped_edge
+                }, f, indent=2)
         except Exception as e:
             print(f"Error saving position: {e}")
+
+    def load_snapped_edge(self):
+        """Load the snapped edge state from settings."""
+        try:
+            with open(SETTINGS_PATH, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data.get('snapped_edge', None)
+        except Exception:
+            return None
 
     def on_item_remove(self, category_data, item_data):
         items = category_data.get('items', [])
@@ -567,3 +609,121 @@ class Window(QWidget):
             self.main_layout.addWidget(bubble)
 
         self.adjustSize()
+
+    # ---------- Edge Snapping & Auto-Hide ----------
+
+    def snap_to_edge(self):
+        """Snap the dock to the nearest screen edge if within threshold."""
+        screen = self.screen()
+        if screen is None:
+            return
+        geo = screen.availableGeometry()
+        threshold = 35
+
+        x, y = self.x(), self.y()
+        w, h = self.width(), self.height()
+
+        # Check left edge
+        if abs(x - geo.left()) <= threshold:
+            self.move(geo.left(), max(geo.top(), min(y, geo.bottom() - h + 1)))
+            self.snapped_edge = "left"
+            return
+
+        # Check right edge
+        if abs((x + w) - (geo.right() + 1)) <= threshold:
+            self.move(geo.right() - w + 1, max(geo.top(), min(y, geo.bottom() - h + 1)))
+            self.snapped_edge = "right"
+            return
+
+        # Check top edge
+        if abs(y - geo.top()) <= threshold:
+            self.move(max(geo.left(), min(x, geo.right() - w + 1)), geo.top())
+            self.snapped_edge = "top"
+            return
+
+        self.snapped_edge = None
+
+    def start_hide_timer(self):
+        """Start the auto-hide timer if docked to an edge."""
+        if self.snapped_edge and not self.hide_timer.isActive():
+            self.hide_timer.start(1200)
+
+    def cancel_hide(self):
+        """Cancel the hide timer and any ongoing animations."""
+        self.hide_timer.stop()
+        if self.hide_animation.state() == QPropertyAnimation.Running:
+            self.hide_animation.stop()
+        if self.show_animation.state() == QPropertyAnimation.Running:
+            self.show_animation.stop()
+
+    def hide_dock(self):
+        """Animate the dock sliding off-screen, leaving a small handle visible."""
+        if not self.snapped_edge:
+            return
+
+        self._dock_visible = False
+
+        # Close drawer
+        if self.drawer.isVisible():
+            self.drawer.hide()
+            self.drawer.current_cat_name = None
+            self.drawer.current_bubble = None
+            self.drawer.current_category_data = None
+
+        screen = self.screen()
+        if screen is None:
+            return
+        geo = screen.availableGeometry()
+
+        target = self.pos()
+        if self.snapped_edge == "left":
+            target = QPoint(-self.width() + 8, self.y())
+        elif self.snapped_edge == "right":
+            target = QPoint(geo.right() - 8 + 1, self.y())
+        elif self.snapped_edge == "top":
+            target = QPoint(self.x(), -self.height() + 8)
+
+        self.hide_animation.stop()
+        self.hide_animation.setStartValue(self.pos())
+        self.hide_animation.setEndValue(target)
+        self.hide_animation.start()
+
+    def show_dock(self):
+        """Animate the dock sliding back to its snapped position."""
+        if not self.snapped_edge:
+            return
+
+        self._dock_visible = True
+
+        screen = self.screen()
+        if screen is None:
+            return
+        geo = screen.availableGeometry()
+
+        target = self.pos()
+        if self.snapped_edge == "left":
+            target = QPoint(geo.left(), self.y())
+        elif self.snapped_edge == "right":
+            target = QPoint(geo.right() - self.width() + 1, self.y())
+        elif self.snapped_edge == "top":
+            target = QPoint(self.x(), geo.top())
+
+        self.show_animation.stop()
+        self.show_animation.setStartValue(self.pos())
+        self.show_animation.setEndValue(target)
+        self.show_animation.start()
+
+    def enterEvent(self, event):
+        self.cancel_hide()
+        if self.snapped_edge and not self._dock_visible:
+            self.show_dock()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.start_hide_timer()
+        super().leaveEvent(event)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.snapped_edge:
+            self.snap_to_edge()
