@@ -27,28 +27,6 @@
       ]
     },
     {
-      "name": "Browsers",
-      "icon": "🌐",
-      "items": [
-        {
-          "name": "Brave",
-          "command": "C:/Users/Mosab Almoghazy/Desktop/Brave.lnk"
-        },
-        {
-          "name": "Google Chrome",
-          "command": "C:/Users/Public/Desktop/Google Chrome.lnk"
-        },
-        {
-          "name": "Microsoft Edge",
-          "command": "C:/Users/Mosab Almoghazy/Desktop/Microsoft Edge.lnk"
-        },
-        {
-          "name": "OpenAI",
-          "command": "D:\\python project\\DesktopOrganizer\\OpenAI.ChatGPT-Desktop_2p2nqsd0c76g0!ChatGPT"
-        }
-      ]
-    },
-    {
       "name": "Social",
       "icon": "💬",
       "items": [
@@ -67,6 +45,28 @@
         {
           "name": "5319275A",
           "command": "D:\\python project\\DesktopOrganizer\\5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App"
+        }
+      ]
+    },
+    {
+      "name": "Browsers",
+      "icon": "🌐",
+      "items": [
+        {
+          "name": "Brave",
+          "command": "C:/Users/Mosab Almoghazy/Desktop/Brave.lnk"
+        },
+        {
+          "name": "Google Chrome",
+          "command": "C:/Users/Public/Desktop/Google Chrome.lnk"
+        },
+        {
+          "name": "Microsoft Edge",
+          "command": "C:/Users/Mosab Almoghazy/Desktop/Microsoft Edge.lnk"
+        },
+        {
+          "name": "OpenAI",
+          "command": "D:\\python project\\DesktopOrganizer\\OpenAI.ChatGPT-Desktop_2p2nqsd0c76g0!ChatGPT"
         }
       ]
     }

@@ -47,6 +47,10 @@ DIALOG_STYLE = """
         background-color: rgba(75, 75, 82, 255);
         color: #ffffff;
     }
+    QPushButton[emojiBtn="true"] {
+        font-family: 'Segoe UI Emoji';
+        font-size: 20px;
+    }
     QCheckBox {
         color: #f0f0f0;
         font-family: 'Segoe UI';
@@ -141,11 +145,14 @@ class CategoryDialog(_BaseDialog):
         self.emoji_buttons = []
         grid = QGridLayout()
         grid.setSpacing(6)
+        emoji_font = QFont("Segoe UI Emoji", 20)
         for i, e in enumerate(EMOJI_PRESETS):
             btn = QPushButton(e)
             btn.setFixedSize(42, 42)
             btn.setCheckable(True)
             btn.setCursor(Qt.PointingHandCursor)
+            btn.setProperty("emojiBtn", "true")
+            btn.setFont(emoji_font)
             if e == emoji:
                 btn.setChecked(True)
             btn.setStyleSheet("""
@@ -153,8 +160,6 @@ class CategoryDialog(_BaseDialog):
                     background-color: rgba(45, 45, 48, 255);
                     border: 1px solid rgba(100, 100, 110, 255);
                     border-radius: 8px;
-                    font-family: 'Segoe UI Emoji';
-                    font-size: 20px;
                 }
                 QPushButton:hover {
                     background-color: rgba(75, 75, 82, 255);
