@@ -1,7 +1,8 @@
 import sys
 import os
 import json
-from PySide6.QtCore import Qt, QPoint, QSize, QMimeData, QTimer, QPropertyAnimation, QEasingCurve
+import time
+from PySide6.QtCore import Qt, QPoint, QPointF, QSize, QMimeData, QTimer, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QFontMetrics, QMouseEvent, QDrag
 from PySide6.QtWidgets import (
     QWidget, QApplication, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QMenu, QDialog
@@ -363,6 +364,14 @@ class Window(QWidget):
         self.snap_animation.setEasingCurve(QEasingCurve.OutCubic)
         self.snap_animation.finished.connect(self._on_snap_finished)
 
+        # Physics (fling & bounce)
+        self.physics_timer = QTimer(self)
+        self.physics_timer.setInterval(16)  # ~60fps
+        self.physics_timer.timeout.connect(self._physics_tick)
+        self.physics_velocity = QPointF(0, 0)
+        self.physics_active = False
+        self._velocity_samples = []  # [(timestamp, global_pos), ...]
+
         self.initUI()
 
     def initUI(self):
@@ -438,16 +447,36 @@ class Window(QWidget):
                 new_pos.setY(max(geo.top() - self.height() + 30, min(new_pos.y(), geo.bottom() - 30)))
 
             self.move(new_pos)
+
+            # Track velocity samples (keep last 100ms)
+            now = time.monotonic()
+            self._velocity_samples.append((now, event.globalPosition().toPoint()))
+            cutoff = now - 0.1
+            self._velocity_samples = [(t, p) for t, p in self._velocity_samples if t >= cutoff]
+
             if self.drawer.isVisible():
                 self.drawer.hide()
             event.accept()
 
     def mouseReleaseEvent(self, event: QMouseEvent):
-        # عند الانتهاء من سحب النافذة -> الالتصاق بالحافة ثم حفظ الموقع
         if event.button() == Qt.LeftButton and self.drag_position is not None:
             self.drag_position = None
-            self.snap_to_edge()
-            self.save_position()
+
+            # Compute release velocity
+            velocity = self._compute_release_velocity()
+            speed = (velocity.x() ** 2 + velocity.y() ** 2) ** 0.5
+
+            if speed >= 1200:
+                # Fling! Start physics simulation
+                self.physics_velocity = velocity
+                self.physics_active = True
+                self.snap_animation.stop()
+                self.hide_timer.stop()
+                self.physics_timer.start()
+            else:
+                # Normal snap
+                self.snap_to_edge()
+
             event.accept()
 
     def load_position(self):
@@ -676,6 +705,9 @@ class Window(QWidget):
             self.show_animation.stop()
         if self.snap_animation.state() == QPropertyAnimation.Running:
             self.snap_animation.stop()
+        if self.physics_active:
+            self.physics_timer.stop()
+            self.physics_active = False
 
     def hide_dock(self):
         """Animate the dock sliding off-screen, leaving a small handle visible."""
@@ -747,4 +779,71 @@ class Window(QWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if self.snapped_edge:
+            self.snap_to_edge()
+
+    # ---------- Inertial Fling & Bouncing Physics ----------
+
+    def _compute_release_velocity(self):
+        """Compute release velocity from recent mouse samples (pixels/second)."""
+        if len(self._velocity_samples) < 2:
+            return QPointF(0, 0)
+
+        # Use the oldest and newest samples within the window
+        t0, p0 = self._velocity_samples[0]
+        t1, p1 = self._velocity_samples[-1]
+        dt = t1 - t0
+        if dt <= 0:
+            return QPointF(0, 0)
+
+        vx = (p1.x() - p0.x()) / dt
+        vy = (p1.y() - p0.y()) / dt
+        return QPointF(vx, vy)
+
+    def _physics_tick(self):
+        """One physics simulation step (~60fps)."""
+        if not self.physics_active:
+            return
+
+        screen = self.screen()
+        if screen is None:
+            self.physics_timer.stop()
+            self.physics_active = False
+            return
+
+        geo = screen.availableGeometry()
+        dt = 0.016  # ~60fps
+        elasticity = 0.72
+        friction = 0.985
+
+        # Update position
+        new_x = self.x() + self.physics_velocity.x() * dt
+        new_y = self.y() + self.physics_velocity.y() * dt
+
+        # Bounce off left/right edges
+        if new_x <= geo.left():
+            new_x = geo.left()
+            self.physics_velocity.setX(-self.physics_velocity.x() * elasticity)
+        elif new_x + self.width() >= geo.right() + 1:
+            new_x = geo.right() - self.width() + 1
+            self.physics_velocity.setX(-self.physics_velocity.x() * elasticity)
+
+        # Bounce off top/bottom edges
+        if new_y <= geo.top():
+            new_y = geo.top()
+            self.physics_velocity.setY(-self.physics_velocity.y() * elasticity)
+        elif new_y + self.height() >= geo.bottom() + 1:
+            new_y = geo.bottom() - self.height() + 1
+            self.physics_velocity.setY(-self.physics_velocity.y() * elasticity)
+
+        self.move(int(new_x), int(new_y))
+
+        # Apply friction
+        self.physics_velocity.setX(self.physics_velocity.x() * friction)
+        self.physics_velocity.setY(self.physics_velocity.y() * friction)
+
+        # Check if settled
+        speed = (self.physics_velocity.x() ** 2 + self.physics_velocity.y() ** 2) ** 0.5
+        if speed < 60:
+            self.physics_timer.stop()
+            self.physics_active = False
             self.snap_to_edge()
