@@ -4,8 +4,8 @@ All dialogs are frameless, translucent dark-glass styled with
 consistent border-radius, shadows, and Segoe UI typography.
 """
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPixmap, QIcon
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit,
     QPushButton, QCheckBox, QGraphicsDropShadowEffect
@@ -88,6 +88,19 @@ def _add_shadow(widget):
     widget.setGraphicsEffect(shadow)
 
 
+def emoji_to_pixmap(emoji, size=28):
+    """Render an emoji to a QPixmap (bypasses font rendering issues)."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    font = QFont("Segoe UI Emoji", size * 3 // 4)
+    painter.setFont(font)
+    painter.setPen(QColor("#ffffff"))
+    painter.drawText(pixmap.rect(), Qt.AlignCenter, emoji)
+    painter.end()
+    return pixmap
+
+
 class _BaseDialog(QDialog):
     """Base class for all frameless dark-glass dialogs."""
 
@@ -145,14 +158,13 @@ class CategoryDialog(_BaseDialog):
         self.emoji_buttons = []
         grid = QGridLayout()
         grid.setSpacing(6)
-        emoji_font = QFont("Segoe UI Emoji", 20)
         for i, e in enumerate(EMOJI_PRESETS):
-            btn = QPushButton(e)
+            btn = QPushButton()
+            btn.setIcon(QIcon(emoji_to_pixmap(e, 28)))
+            btn.setIconSize(QSize(28, 28))
             btn.setFixedSize(42, 42)
             btn.setCheckable(True)
             btn.setCursor(Qt.PointingHandCursor)
-            btn.setProperty("emojiBtn", "true")
-            btn.setFont(emoji_font)
             if e == emoji:
                 btn.setChecked(True)
             btn.setStyleSheet("""
