@@ -1,8 +1,8 @@
 import sys
 import os
 import json
-from PySide6.QtCore import Qt, QPoint, QSize
-from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QFontMetrics, QMouseEvent
+from PySide6.QtCore import Qt, QPoint, QSize, QMimeData
+from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QFontMetrics, QMouseEvent, QDrag
 from PySide6.QtWidgets import (
     QWidget, QApplication, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QMenu, QDialog
 )
@@ -89,9 +89,41 @@ class CategoryBubble(QPushButton):
         self.customContextMenuRequested.connect(
             lambda pos: self.on_context_callback(pos, self, self.category_data)
         )
+        self._drag_start_pos = None
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._drag_start_pos = event.globalPosition().toPoint()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.LeftButton and self._drag_start_pos is not None:
+            distance = (event.globalPosition().toPoint() - self._drag_start_pos).manhattanLength()
+            if distance >= QApplication.startDragDistance():
+                self._start_reorder_drag()
+                return
+        super().mouseMoveEvent(event)
+
+    def _start_reorder_drag(self):
+        self._drag_start_pos = None
+        parent = self.parent()
+        if parent is None or not hasattr(parent, 'categories'):
+            return
+        try:
+            source_index = parent.categories.index(self.category_data)
+        except ValueError:
+            return
+        drag = QDrag(self)
+        mime_data = QMimeData()
+        mime_data.setData("application/x-category-bubble", str(source_index).encode())
+        drag.setMimeData(mime_data)
+        drag.exec(Qt.MoveAction)
 
     def dragEnterEvent(self, event):
-        if event.mimeData().hasUrls():
+        if event.mimeData().hasFormat("application/x-category-bubble"):
+            event.acceptProposedAction()
+            self.setStyleSheet(self.highlight_style)
+        elif event.mimeData().hasUrls():
             event.acceptProposedAction()
             self.setStyleSheet(self.highlight_style)
         else:
@@ -103,6 +135,33 @@ class CategoryBubble(QPushButton):
 
     def dropEvent(self, event):
         self.setStyleSheet(self.default_style)
+        if event.mimeData().hasFormat("application/x-category-bubble"):
+            self._handle_reorder_drop(event)
+        elif event.mimeData().hasUrls():
+            self._handle_file_drop(event)
+        else:
+            event.ignore()
+
+    def _handle_reorder_drop(self, event):
+        parent = self.parent()
+        if parent is None or not hasattr(parent, 'categories'):
+            event.ignore()
+            return
+        try:
+            source_index = int(event.mimeData().data("application/x-category-bubble").data().decode())
+            target_index = parent.categories.index(self.category_data)
+        except (ValueError, AttributeError):
+            event.ignore()
+            return
+        if source_index != target_index:
+            categories = parent.categories
+            item = categories.pop(source_index)
+            categories.insert(target_index, item)
+            save_config(categories)
+            parent.rebuild_bubbles()
+        event.acceptProposedAction()
+
+    def _handle_file_drop(self, event):
         if event.mimeData().hasUrls():
             for url in event.mimeData().urls():
                 file_path = url.toLocalFile()
@@ -424,13 +483,28 @@ class Window(QWidget):
         menu = QMenu(self)
         menu.setStyleSheet(DARK_MENU_STYLE)
         rename_action = menu.addAction("Rename / Change Icon")
+        move_left_action = menu.addAction("Move Left")
+        move_right_action = menu.addAction("Move Right")
         remove_action = menu.addAction("Remove Category")
 
         action = menu.exec_(bubble.mapToGlobal(pos))
         if action == rename_action:
             self.edit_category(category_data)
+        elif action == move_left_action:
+            self.move_category(category_data, -1)
+        elif action == move_right_action:
+            self.move_category(category_data, 1)
         elif action == remove_action:
             self.delete_category(category_data)
+
+    def move_category(self, category_data, direction):
+        index = self.categories.index(category_data)
+        new_index = index + direction
+        if 0 <= new_index < len(self.categories):
+            self.categories[index], self.categories[new_index] = \
+                self.categories[new_index], self.categories[index]
+            save_config(self.categories)
+            self.rebuild_bubbles()
 
     def edit_category(self, category_data):
         dialog = CategoryDialog(
@@ -459,6 +533,7 @@ class Window(QWidget):
             title="Remove Category",
             message=f"Remove '{category_data.get('name', '')}' and all its items?",
         )
+        dialog.exec()
         if not dialog.confirmed:
             return
 
