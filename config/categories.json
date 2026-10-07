@@ -25,6 +25,14 @@
         {
           "name": "Discord",
           "command": "C:/Users/Mosab Almoghazy/Desktop/Discord.lnk"
+        },
+        {
+          "name": "Zoom Workplace",
+          "command": "C:/Users/Public/Desktop/Zoom Workplace.lnk"
+        },
+        {
+          "name": "Telegram",
+          "command": "C:/Users/Mosab Almoghazy/Desktop/Telegram.lnk"
         }
       ]
     },
@@ -35,6 +43,14 @@
         {
           "name": "Handy",
           "command": "C:/Users/Mosab Almoghazy/Desktop/Handy.lnk"
+        },
+        {
+          "name": "Telegram",
+          "command": "C:/Users/Mosab Almoghazy/Desktop/Telegram.lnk"
+        },
+        {
+          "name": "5319275A",
+          "command": "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App"
         }
       ]
     }

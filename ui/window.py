@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QWidget, QApplication, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QMenu
 )
 from core.launcher import launch_target
-from core.icon_extractor import extract_native_icon
+from core.shell_resolver import resolve_shell_item, clean_icon
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config', 'categories.json')
 SETTINGS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config', 'settings.json')
@@ -76,13 +76,13 @@ class CategoryBubble(QPushButton):
             for url in event.mimeData().urls():
                 file_path = url.toLocalFile()
                 if file_path:
-                    # استخراج الاسم النظيف للملف بدون الامتداد
-                    base_name = os.path.basename(file_path)
-                    clean_name, _ = os.path.splitext(base_name)
+                    # حل شامل عبر Windows Shell: الاسم + أمر التشغيل
+                    info = resolve_shell_item(file_path)
+                    clean_name = info.name if info and info.name else "New Item"
                     
                     new_item = {
-                        "name": clean_name if clean_name else "New Item",
-                        "command": file_path
+                        "name": clean_name,
+                        "command": info.command if info else file_path
                     }
                     self.on_drop_callback(self, self.category_data, new_item)
             event.acceptProposedAction()
@@ -97,8 +97,8 @@ class DrawerItemButton(QPushButton):
         self.item_data = item_data
         self.command = item_data.get('command', '')
 
-        # استخراج الأيقونة الأصلية للنظام (.exe / .lnk / ملف)
-        icon = extract_native_icon(self.command)
+        # استخراج الأيقونة الأصلية النظيفة (.exe / .lnk / UWP / ملف)
+        icon = clean_icon(self.command)
 
         self.setFixedHeight(42)
         self.setCursor(Qt.PointingHandCursor)
