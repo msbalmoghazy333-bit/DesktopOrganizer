@@ -4,7 +4,8 @@ import json
 from PySide6.QtCore import Qt, QPoint, QSize
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QFontMetrics, QMouseEvent
 from PySide6.QtWidgets import (
-    QWidget, QApplication, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QMenu
+    QWidget, QApplication, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QMenu,
+    QInputDialog, QMessageBox
 )
 from core.launcher import launch_target
 from core.shell_resolver import resolve_shell_item, clean_icon
@@ -20,12 +21,37 @@ def save_config(categories_data):
     except Exception as e:
         print(f"Error saving config: {e}")
 
+# نمط القوائم المنبثقة الداكنة (زجاجي) — مشترك بين كل القوائم
+DARK_MENU_STYLE = """
+    QMenu {
+        background-color: rgba(30, 30, 32, 245);
+        border: 1px solid rgba(80, 80, 85, 200);
+        border-radius: 8px;
+        padding: 4px;
+    }
+    QMenu::item {
+        color: #f0f0f0;
+        padding: 6px 20px;
+        border-radius: 5px;
+    }
+    QMenu::item:selected {
+        background-color: rgba(90, 90, 100, 255);
+        color: #ffffff;
+    }
+    QMenu::separator {
+        height: 1px;
+        background: rgba(80, 80, 85, 180);
+        margin: 4px 12px;
+    }
+"""
+
 class CategoryBubble(QPushButton):
-    def __init__(self, category_data, on_click_callback, on_drop_callback, parent=None):
+    def __init__(self, category_data, on_click_callback, on_drop_callback, on_context_callback, parent=None):
         super().__init__(parent)
         self.category_data = category_data
         self.on_click_callback = on_click_callback
         self.on_drop_callback = on_drop_callback
+        self.on_context_callback = on_context_callback
         
         self.setFixedSize(54, 54)
         self.setCursor(Qt.PointingHandCursor)
@@ -58,6 +84,11 @@ class CategoryBubble(QPushButton):
         """
         self.setStyleSheet(self.default_style)
         self.clicked.connect(lambda: self.on_click_callback(self, self.category_data))
+        # قائمة يمين خاصة بالفئة
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(
+            lambda pos: self.on_context_callback(pos, self, self.category_data)
+        )
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -215,23 +246,7 @@ class Drawer(QWidget):
     def show_item_menu(self, pos, item_data):
         # قائمة منبثقة داكنة أنيقة
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: rgba(30, 30, 32, 245);
-                border: 1px solid rgba(80, 80, 85, 200);
-                border-radius: 8px;
-                padding: 4px;
-            }
-            QMenu::item {
-                color: #f0f0f0;
-                padding: 6px 20px;
-                border-radius: 5px;
-            }
-            QMenu::item:selected {
-                background-color: rgba(90, 90, 100, 255);
-                color: #ffffff;
-            }
-        """)
+        menu.setStyleSheet(DARK_MENU_STYLE)
         remove_action = menu.addAction("Remove")
         action = menu.exec_(self.mapToGlobal(pos))
         if action == remove_action and self.current_category_data is not None:
@@ -277,13 +292,13 @@ class Window(QWidget):
         self.main_layout.setSpacing(10)
 
         self.load_categories()
-
-        for cat in self.categories:
-            bubble = CategoryBubble(cat, self.on_category_clicked, self.on_item_dropped, self)
-            self.bubbles.append(bubble)
-            self.main_layout.addWidget(bubble)
+        self.rebuild_bubbles()
 
         self.setLayout(self.main_layout)
+
+        # قائمة يمين على سطح الـ Dock (المناطق الفارغة)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.show_dock_context_menu)
         # استعادة آخر موقع محفوظ (أو الافتراضي 120,120)
         pos_x, pos_y = self.load_position()
         self.setGeometry(pos_x, pos_y, self.sizeHint().width(), self.sizeHint().height())
@@ -364,3 +379,124 @@ class Window(QWidget):
         # حفظ فوري في JSON ثم تحديث المنيو إن كان مفتوحاً
         save_config(self.categories)
         self.drawer.refresh_if_open(category_data)
+
+    # ---------- قائمة سطح الـ Dock (النافذة الرئيسية) ----------
+
+    def show_dock_context_menu(self, pos):
+        menu = QMenu(self)
+        menu.setStyleSheet(DARK_MENU_STYLE)
+        add_action = menu.addAction("+ Add New Category")
+        config_action = menu.addAction("Open Config Folder")
+        menu.addSeparator()
+        exit_action = menu.addAction("Exit Desktop Organizer")
+
+        action = menu.exec_(self.mapToGlobal(pos))
+        if action == add_action:
+            self.add_category()
+        elif action == config_action:
+            self.open_config_folder()
+        elif action == exit_action:
+            QApplication.quit()
+
+    def add_category(self):
+        name, ok = QInputDialog.getText(self, "Add Category", "Category Name:")
+        if not ok or not name.strip():
+            return
+        emoji, ok_emoji = QInputDialog.getText(self, "Add Category", "Icon / Emoji:", text="📁")
+        if not ok_emoji:
+            return
+        new_category = {
+            "name": name.strip(),
+            "icon": emoji.strip() or "📁",
+            "items": [],
+        }
+        self.categories.append(new_category)
+        save_config(self.categories)
+        self.rebuild_bubbles()
+
+    def open_config_folder(self):
+        config_dir = os.path.dirname(CONFIG_PATH)
+        if os.path.isdir(config_dir):
+            os.startfile(config_dir)
+
+    # ---------- قائمة الفقاعات (الفئات) ----------
+
+    def on_category_context(self, pos, bubble, category_data):
+        menu = QMenu(self)
+        menu.setStyleSheet(DARK_MENU_STYLE)
+        edit_action = menu.addAction("Edit Category")
+        delete_action = menu.addAction("Delete Category")
+
+        action = menu.exec_(bubble.mapToGlobal(pos))
+        if action == edit_action:
+            self.edit_category(category_data)
+        elif action == delete_action:
+            self.delete_category(category_data)
+
+    def edit_category(self, category_data):
+        current_name = category_data.get('name', '')
+        current_icon = category_data.get('icon', '📁')
+        name, ok = QInputDialog.getText(
+            self, "Edit Category", "Category Name:", text=current_name
+        )
+        if not ok or not name.strip():
+            return
+        emoji, ok_emoji = QInputDialog.getText(
+            self, "Edit Category", "Icon / Emoji:", text=current_icon
+        )
+        if not ok_emoji:
+            return
+        category_data['name'] = name.strip()
+        category_data['icon'] = emoji.strip() or current_icon
+
+        # إغلاق القائمة إن كانت مفتوحة لهذه الفئة (تغيّر الاسم)
+        if self.drawer.current_category_data is category_data:
+            self.drawer.hide()
+            self.drawer.current_cat_name = None
+            self.drawer.current_bubble = None
+            self.drawer.current_category_data = None
+
+        save_config(self.categories)
+        self.rebuild_bubbles()
+
+    def delete_category(self, category_data):
+        reply = QMessageBox.question(
+            self,
+            "Delete Category",
+            f"Delete '{category_data.get('name', '')}' and all its items?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        # إغلاق القائمة إن كانت مفتوحة لهذه الفئة
+        if self.drawer.current_category_data is category_data:
+            self.drawer.hide()
+            self.drawer.current_cat_name = None
+            self.drawer.current_bubble = None
+            self.drawer.current_category_data = None
+
+        self.categories.remove(category_data)
+        save_config(self.categories)
+        self.rebuild_bubbles()
+
+    def rebuild_bubbles(self):
+        """إعادة بناء كل فقاعات الفئات من self.categories."""
+        for bubble in self.bubbles:
+            self.main_layout.removeWidget(bubble)
+            bubble.deleteLater()
+        self.bubbles = []
+
+        for cat in self.categories:
+            bubble = CategoryBubble(
+                cat,
+                self.on_category_clicked,
+                self.on_item_dropped,
+                self.on_category_context,
+                self,
+            )
+            self.bubbles.append(bubble)
+            self.main_layout.addWidget(bubble)
+
+        self.adjustSize()
