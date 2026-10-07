@@ -4,11 +4,11 @@ import json
 from PySide6.QtCore import Qt, QPoint, QSize
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QFontMetrics, QMouseEvent
 from PySide6.QtWidgets import (
-    QWidget, QApplication, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QMenu,
-    QInputDialog, QMessageBox
+    QWidget, QApplication, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QMenu, QDialog
 )
 from core.launcher import launch_target
 from core.shell_resolver import resolve_shell_item, clean_icon
+from ui.dialogs import CategoryDialog, AboutDialog, SettingsDialog, ConfirmDialog
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config', 'categories.json')
 SETTINGS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config', 'settings.json')
@@ -386,88 +386,80 @@ class Window(QWidget):
         menu = QMenu(self)
         menu.setStyleSheet(DARK_MENU_STYLE)
         add_action = menu.addAction("+ Add New Category")
-        config_action = menu.addAction("Open Config Folder")
+        settings_action = menu.addAction("Settings / Preferences")
         menu.addSeparator()
-        exit_action = menu.addAction("Exit Desktop Organizer")
+        about_action = menu.addAction("About")
+        exit_action = menu.addAction("Exit")
 
         action = menu.exec_(self.mapToGlobal(pos))
         if action == add_action:
             self.add_category()
-        elif action == config_action:
-            self.open_config_folder()
+        elif action == settings_action:
+            self.show_settings()
+        elif action == about_action:
+            self.show_about()
         elif action == exit_action:
             QApplication.quit()
 
     def add_category(self):
-        name, ok = QInputDialog.getText(self, "Add Category", "Category Name:")
-        if not ok or not name.strip():
-            return
-        emoji, ok_emoji = QInputDialog.getText(self, "Add Category", "Icon / Emoji:", text="📁")
-        if not ok_emoji:
-            return
-        new_category = {
-            "name": name.strip(),
-            "icon": emoji.strip() or "📁",
-            "items": [],
-        }
-        self.categories.append(new_category)
-        save_config(self.categories)
-        self.rebuild_bubbles()
+        dialog = CategoryDialog(self, title="Add New Category")
+        if dialog.exec() == QDialog.Accepted and dialog.category_name:
+            self.categories.append({
+                "name": dialog.category_name,
+                "icon": dialog.category_emoji,
+                "items": [],
+            })
+            save_config(self.categories)
+            self.rebuild_bubbles()
 
-    def open_config_folder(self):
-        config_dir = os.path.dirname(CONFIG_PATH)
-        if os.path.isdir(config_dir):
-            os.startfile(config_dir)
+    def show_settings(self):
+        SettingsDialog(self).exec()
+
+    def show_about(self):
+        AboutDialog(self).exec()
 
     # ---------- قائمة الفقاعات (الفئات) ----------
 
     def on_category_context(self, pos, bubble, category_data):
         menu = QMenu(self)
         menu.setStyleSheet(DARK_MENU_STYLE)
-        edit_action = menu.addAction("Edit Category")
-        delete_action = menu.addAction("Delete Category")
+        rename_action = menu.addAction("Rename / Change Icon")
+        remove_action = menu.addAction("Remove Category")
 
         action = menu.exec_(bubble.mapToGlobal(pos))
-        if action == edit_action:
+        if action == rename_action:
             self.edit_category(category_data)
-        elif action == delete_action:
+        elif action == remove_action:
             self.delete_category(category_data)
 
     def edit_category(self, category_data):
-        current_name = category_data.get('name', '')
-        current_icon = category_data.get('icon', '📁')
-        name, ok = QInputDialog.getText(
-            self, "Edit Category", "Category Name:", text=current_name
+        dialog = CategoryDialog(
+            self,
+            title="Rename / Change Icon",
+            name=category_data.get('name', ''),
+            emoji=category_data.get('icon', '📁'),
         )
-        if not ok or not name.strip():
-            return
-        emoji, ok_emoji = QInputDialog.getText(
-            self, "Edit Category", "Icon / Emoji:", text=current_icon
-        )
-        if not ok_emoji:
-            return
-        category_data['name'] = name.strip()
-        category_data['icon'] = emoji.strip() or current_icon
+        if dialog.exec() == QDialog.Accepted and dialog.category_name:
+            category_data['name'] = dialog.category_name
+            category_data['icon'] = dialog.category_emoji
 
-        # إغلاق القائمة إن كانت مفتوحة لهذه الفئة (تغيّر الاسم)
-        if self.drawer.current_category_data is category_data:
-            self.drawer.hide()
-            self.drawer.current_cat_name = None
-            self.drawer.current_bubble = None
-            self.drawer.current_category_data = None
+            # إغلاق القائمة إن كانت مفتوحة لهذه الفئة (تغيّر الاسم)
+            if self.drawer.current_category_data is category_data:
+                self.drawer.hide()
+                self.drawer.current_cat_name = None
+                self.drawer.current_bubble = None
+                self.drawer.current_category_data = None
 
-        save_config(self.categories)
-        self.rebuild_bubbles()
+            save_config(self.categories)
+            self.rebuild_bubbles()
 
     def delete_category(self, category_data):
-        reply = QMessageBox.question(
+        dialog = ConfirmDialog(
             self,
-            "Delete Category",
-            f"Delete '{category_data.get('name', '')}' and all its items?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            title="Remove Category",
+            message=f"Remove '{category_data.get('name', '')}' and all its items?",
         )
-        if reply != QMessageBox.Yes:
+        if not dialog.confirmed:
             return
 
         # إغلاق القائمة إن كانت مفتوحة لهذه الفئة
